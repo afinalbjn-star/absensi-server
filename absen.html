@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Absensi MM BJN Timur</title>
+  <link rel="icon" href="data:," />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f1f5f9; color: #0f172a; }
+    header { background: #0f172a; color: #fff; padding: 14px 16px; text-align: center; }
+    header h1 { font-size: 18px; }
+    header p { font-size: 12px; color: #cbd5e1; margin-top: 2px; }
+    main { padding: 16px; max-width: 520px; margin: 0 auto; }
+    nav { display: flex; gap: 8px; margin-bottom: 16px; }
+    nav button { flex: 1; padding: 12px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; background: #e2e8f0; color: #475569; cursor: pointer; }
+    nav button.active { background: #2563eb; color: #fff; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card { background: #fff; border-radius: 14px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    label { display: block; font-size: 13px; color: #475569; margin: 12px 0 4px; font-weight: 600; }
+    input, select { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 15px; background: #fff; }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; margin-top: 16px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-green { background: #16a34a; color: #fff; }
+    .btn-outline { background: #fff; color: #2563eb; border: 1.5px solid #2563eb; }
+    .btn:disabled { opacity: .6; }
+    .hint { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+    .saved { margin-top: 14px; padding: 12px; border-radius: 10px; background: #dcfce7; color: #166534; font-size: 13px; display: none; }
+    #scanner-wrap { position: relative; width: 100%; aspect-ratio: 3/4; background: #000; border-radius: 14px; overflow: hidden; }
+    #video { width: 100%; height: 100%; object-fit: cover; }
+    #scan-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    #scan-box { width: 60%; height: 45%; border: 3px solid rgba(255,255,255,.9); border-radius: 16px; }
+    #scan-status { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(15,23,42,.8); color: #fff; text-align: center; padding: 8px; font-size: 12px; }
+    .msg { margin-top: 14px; padding: 12px; border-radius: 10px; font-size: 13px; display: none; }
+    .msg.ok { background: #dcfce7; color: #166534; display: block; }
+    .msg.err { background: #fee2e2; color: #991b1b; display: block; }
+    .msg.info { background: #e0f2fe; color: #075985; display: block; }
+    .dlg { position: fixed; inset: 0; background: rgba(15,23,42,.6); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 50; }
+    .dlg.show { display: flex; }
+    .dlg-card { background: #fff; border-radius: 16px; padding: 24px; max-width: 360px; width: 100%; text-align: center; }
+    .dlg-icon { font-size: 46px; }
+    .dlg-title { font-size: 18px; font-weight: 700; margin: 8px 0 4px; }
+    .dlg-text { font-size: 14px; color: #475569; }
+    .dlg .btn { margin-top: 20px; }
+    #pin-dlg input { text-align: center; letter-spacing: 8px; font-size: 22px; }
+    .saved-box { display: flex; align-items: center; justify-content: space-between; background: #dcfce7; border-radius: 12px; padding: 14px; margin-top: 14px; }
+    .saved-box .info b { font-size: 15px; }
+    .saved-box .info span { font-size: 12px; color: #475569; display: block; }
+    .icon-btn { background: none; border: none; font-size: 13px; color: #2563eb; cursor: pointer; }
+    .locked-note { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 10px; }
+    .row2 { display: flex; gap: 8px; }
+    .row2 > div { flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ABSENSI MUMI BOJONEGORO TIMUR</h1>
+    <p>Absen via web — bisa dipakai iPhone & HP Android</p>
+  </header>
+
+  <main>
+    <nav>
+      <button id="tab-profil" class="active" onclick="showTab('profil')">Profil</button>
+      <button id="tab-scan" onclick="showTab('scan')">Scan QR</button>
+    </nav>
+
+    <!-- ===== PANEL PROFIL ===== -->
+    <div id="panel-profil" class="panel active">
+      <div class="card">
+        <label>Nama Lengkap</label>
+        <input id="nama" placeholder="Nama siswa" autocomplete="off" />
+
+        <label>Desa</label>
+        <select id="desa"></select>
+
+        <label>Kelompok</label>
+        <select id="kelompok"></select>
+
+        <label>Jenis Kelamin</label>
+        <select id="jk">
+          <option>Laki-laki</option>
+          <option>Perempuan</option>
+        </select>
+
+        <label>PIN Kunci (4-6 angka)</label>
+        <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" placeholder="4-6 angka" />
+        <div class="hint">PIN untuk mengunci profil. Tanpa PIN, profil tidak bisa diubah.</div>
+
+        <button class="btn btn-primary" onclick="simpanProfil()">Simpan Profil</button>
+        <div class="msg err" id="profil-err"></div>
+        <div class="saved" id="profil-saved"></div>
+        <div class="saved-box" id="saved-box" style="display:none;">
+          <div class="info">
+            <b id="sb-nama"></b>
+            <span id="sb-meta"></span>
+          </div>
+          <button class="icon-btn" onclick="ubahProfil()">Ubah</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PANEL SCAN ===== -->
+    <div id="panel-scan" class="panel">
+      <div class="card" style="padding:0;background:transparent;box-shadow:none;">
+        <div id="scanner-wrap">
+          <video id="video" playsinline muted></video>
+          <div id="scan-overlay"><div id="scan-box"></div></div>
+          <div id="scan-status">Menyiapkan kamera...</div>
+        </div>
+        <div class="hint" style="text-align:center;margin-top:8px;">
+          Arahkan kamera ke QR di lokasi. Setelah terbaca, kamu akan diminta foto selfie.
+        </div>
+        <button class="btn btn-outline" id="btn-lamp" onclick="toggleLampu()">💡 Nyalakan Lampu</button>
+        <div class="msg" id="scan-msg"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== DIALOG PIN UBAH PROFIL ===== -->
+  <div class="dlg" id="pin-dlg">
+    <div class="dlg-card">
+      <div class="dlg-icon">🔒</div>
+      <div class="dlg-title">Ubah Profil</div>
+      <div class="dlg-text">Masukkan PIN untuk mengizinkan perubahan profil.</div>
+      <input id="pin-cek" type="password" inputmode="numeric" placeholder="PIN" style="margin-top:14px;text-align:center;letter-spacing:6px;" />
+      <div class="msg err" id="pin-err"></div>
+      <button class="btn btn-primary" onclick="cekPin()">Cek</button>
+      <button class="btn btn-outline" onclick="tutupPin()" style="margin-top:8px;">Batal</button>
+    </div>
+  </div>
+
+  <!-- ===== DIALOG SELFIE ===== -->
+  <div class="dlg" id="selfie-dlg">
+    <div class="dlg-card">
+      <div class="dlg-icon">🤳</div>
+      <div class="dlg-title">Foto Selfie</div>
+      <div class="dlg-text">Foto wajahmu sebagai bukti kehadiran. Setelah scan, ketuk tombol di bawah.</div>
+      <button class="btn btn-primary" onclick="ambitSelfie()">📸 Ambil Foto</button>
+      <button class="btn btn-outline" onclick="tutupSelfie(false)" style="margin-top:8px;">Batal (tidak absen)</button>
+      <input type="file" id="selfie-input" accept="image/*" capture="user" style="display:none;" />
+      <canvas id="selfie-canvas" style="display:none;"></canvas>
+      <input type="hidden" id="scan-desa" />
+    </div>
+  </div>
+
+  <!-- ===== DIALOG HASIL ===== -->
+  <div class="dlg" id="hasil-dlg">
+    <div class="dlg-card">
+      <div class="dlg-icon" id="hasil-icon"></div>
+      <div class="dlg-title" id="hasil-title"></div>
+      <div class="dlg-text" id="hasil-text"></div>
+      <button class="btn btn-primary" onclick="tutupHasil()">OK</button>
+    </div>
+  </div>
+
+  <script src="jsqr.js"></script>
+  <script>
+    // Data desa & kelompok (sama dengan server)
+    const DESA_KELOMPOK = {
+      SELATAN: ["KUNCI 1","KUNCI 2","PENGANTEN","BOMO 1","BOMO 2","GEGER","PACING 1","PACING 2","PACING 3"],
+      TIMUR: ["TA BARAT","TA TENGAH","TA TIMUR","KALIPAN","TA 5","TA 6","TA 7","JATICILIK"],
+      DAMPET: ["DAMPET 1","DAMPET 2","DAMPET 3","BALONGREJO","NGUJUNG","KALICILIK"],
+      BAURENO: ["SUMBEREJO","BAURENO","SUGIHWARAS","SUMBERAGUNG","KRANGKONG","PEJOK"],
+    };
+    const DESA_BEBAS = "PENGAJIAN MUMI DAERAH";
+    const API = location.origin;
+
+    const $ = (id) => document.getElementById(id);
+    let profil = null;
+    let editDibuka = false;
+
+    // ---------- NAV ----------
+    function showTab(n) {
+      document.querySelectorAll(".panel").forEach((p) => (p.classList.remove("active")));
+      document.querySelectorAll("nav button").forEach((b) => (b.classList.remove("active")));
+      $("panel-" + n).classList.add("active");
+      $("tab-" + n).classList.add("active");
+      if (n === "scan") mulaiScan();
+      else if (n === "profil") hentikanScan();
+    }
+
+    // ---------- PROFIL ----------
+    function isiDropdownDesa() {
+      const sel = $("desa");
+      sel.innerHTML = "";
+      Object.keys(DESA_KELOMPOK).forEach((d) => {
+        const o = document.createElement("option");
+        o.value = d; o.textContent = d; sel.appendChild(o);
+      });
+      const oB = document.createElement("option");
+      oB.value = DESA_BEBAS; oB.textContent = DESA_BEBAS; sel.appendChild(oB);
+    }
+
+    function isiKelompok() {
+      const d = $("desa").value;
+      const sel = $("kelompok");
+      sel.innerHTML = "";
+      const list = d === DESA_BEBAS ? ["Semua Kelompok"] : DESA_KELOMPOK[d];
+      list.forEach((k) => {
+        const o = document.createElement("option");
+        o.value = k; o.textContent = k; sel.appendChild(o);
+      });
+    }
+
+    function simpanProfil() {
+      const nama = $("nama").value.trim();
+      const desa = $("desa").value;
+      const kelompok = $("kelompok").value;
+      const jk = $("jk").value;
+      const pin = $("pin").value.trim();
+      if (!nama) return tampilErr("Nama wajib diisi.");
+      if (kelompok === "Semua Kelompok") return tampilErr("Untuk QR PENGAJIAN, kelompok tidak perlu dipilih di profil. Pilih kelompok dari desa asalmu.");
+      if (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) return tampilErr("PIN harus 4-6 angka.");
+      profil = { nama, desa, kelompok, jk, pin };
+      localStorage.setItem("profil", JSON.stringify(profil));
+      tampilkanProfilTersimpan();
+      tampilOK("Profil tersimpan. Buka tab Scan QR untuk absen.");
+    }
+
+    function tampilkanProfilTersimpan() {
+      $("saved-box").style.display = profil ? "flex" : "none";
+      if (profil) {
+        $("sb-nama").textContent = profil.nama;
+        $("sb-meta").textContent = profil.desa + " · " + profil.kelompok + " · " + profil.jk;
+      }
+    }
+
+    function ubahProfil() {
+      editDibuka = true;
+      $("pin-dlg").classList.add("show");
+      $("pin-cek").value = "";
+      $("pin-err").style.display = "none";
+    }
+
+    function cekPin() {
+      if ($("pin-cek").value.trim() !== profil.pin) {
+        $("pin-err").textContent = "PIN salah.";
+        $("pin-err").style.display = "block";
+        return;
+      }
+      tutupPin();
+      editDibuka = false;
+      $("nama").value = profil.nama;
+      $("desa").value = profil.desa;
+      isiKelompok();
+      $("kelompok").value = profil.kelompok;
+      $("jk").value = profil.jk;
+      $("pin").value = profil.pin;
+      $("saved-box").style.display = "none";
+      tampilOK("Profil dibuka. Ubah lalu tekan Simpan Profil.");
+    }
+
+    function tutupPin() { $("pin-dlg").classList.remove("show"); }
+
+    function tampilErr(m) { const e = $("profil-err"); e.textContent = m; e.style.display = "block"; setTimeout(() => (e.style.display = "none"), 3000); }
+    function tampilOK(m) { const s = $("profil-saved"); s.textContent = m; s.style.display = "block"; setTimeout(() => (s.style.display = "none"), 3000); }
+
+    // ---------- SCAN QR ----------
+    let stream = null;
+    let scanning = false;
+    let memproses = false;
+
+    async function mulaiScan() {
+      if (memproses) return;
+      if (!profil) { tampilScan("Lengkapi profil dulu di tab Profil.", "err"); return; }
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+          $("video").srcObject = stream;
+          $("scan-status").textContent = "Pindai QR...";
+          await $("video").play();
+          loopScan();
+        } catch (e) {
+          tampilScan("Kamera tidak bisa dibuka. Periksa izin kamera di Safari (Pengaturan > Safari > Kamera).", "err");
+        }
+      }
+    }
+
+    function hentikanScan() {
+      if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+      scanning = false;
+    }
+
+    function loopScan() {
+      if (!stream || memproses) return;
+      scanning = true;
+      const canvas = document.createElement("canvas");
+      const v = $("video");
+      const tick = () => {
+        if (!scanning || !stream || document.hidden) return requestAnimationFrame(tick);
+        if (v.readyState >= 2 && v.videoWidth > 0) {
+          canvas.width = v.videoWidth;
+          canvas.height = v.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          try {
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const kode = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+            if (kode && kode.data) {
+              onQr(kode.data.trim().toUpperCase());
+            }
+          } catch (e) {}
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    let lampOn = false;
+    function toggleLampu() {
+      if (!stream) return;
+      const track = stream.getVideoTracks()[0];
+      if (track && track.applyConstraints) {
+        lampOn = !lampOn;
+        track.applyConstraints({ advanced: [{ torch: lampOn }] }).catch(() => {});
+        $("btn-lamp").textContent = lampOn ? "💡 Matikan Lampu" : "💡 Nyalakan Lampu";
+      }
+    }
+
+    async function onQr(desa) {
+      if (memproses) return;
+      const dikenal = DESA_KELOMPOK[desa] || desa === DESA_BEBAS;
+      if (!dikenal) { tampilScan('QR tidak dikenal: "' + desa + '"', "err"); return; }
+      memproses = true;
+      hentikanScan();
+      tampilScan("QR terbaca (" + desa + "). Siapkan selfie...", "info");
+      $("selfie-dlg").classList.add("show");
+      $("scan-desa").value = desa;
+    }
+
+    // ---------- SELFIE ----------
+    function ambitSelfie() { $("selfie-input").click(); }
+
+    $("selfie-input").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) { tutupSelfie(true); return; }
+      try {
+        const fotoBase64 = await kompresFoto(file);
+        const desa = $("scan-desa").value;
+        await kirimAbsen(desa, fotoBase64);
+      } catch (e) {
+        tampilScan("Gagal memproses foto: " + e.message, "err");
+        tutupSelfie(true);
+      }
+    });
+
+    function kompresFoto(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const max = 800;
+          let w = img.width, h = img.height;
+          const s = Math.max(w, h);
+          if (s > max) { const r = max / s; w = Math.round(w * r); h = Math.round(h * r); }
+          const c = $("selfie-canvas");
+          c.width = w; c.height = h;
+          c.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL("image/jpeg", 0.6).split(",")[1]);
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    async function kirimAbsen(desa, fotoBase64) {
+      tampilScan("Mengirim absen...", "info");
+      try {
+        const res = await fetch(API + "/api/absen", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nama: profil.nama,
+            desa: desa,
+            kelompok: profil.kelompok,
+            jenis_kelamin: profil.jk,
+            kode_sekolah: "SMAN1",
+            foto: fotoBase64,
+          }),
+        });
+        const j = await res.json();
+        tutupSelfie(true);
+        if (j.ok) {
+          tampilDialog("✅", "Absen Berhasil", j.pesan);
+        } else {
+          tampilDialog("❌", "Gagal", j.pesan || "Terjadi kesalahan.");
+        }
+      } catch (e) {
+        tutupSelfie(true);
+        tampilScan("Gagal kirim: " + e.message, "err");
+      } finally {
+        memproses = false;
+      }
+    }
+
+    function tutupSelfie(ulangi) {
+      $("selfie-dlg").classList.remove("show");
+      $("selfie-input").value = "";
+      if (ulangi) {
+        memproses = false;
+        if (document.getElementById("panel-scan").classList.contains("active")) mulaiScan();
+      }
+    }
+
+    // ---------- DIALOG & STATUS ----------
+    function tampilDialog(icon, title, text) {
+      $("hasil-icon").textContent = icon;
+      $("hasil-title").textContent = title;
+      $("hasil-text").textContent = text;
+      $("hasil-dlg").classList.add("show");
+    }
+    function tutupHasil() {
+      $("hasil-dlg").classList.remove("show");
+      memproses = false;
+      if (document.getElementById("panel-scan").classList.contains("active")) mulaiScan();
+    }
+
+    function tampilScan(m, t) {
+      const e = $("scan-msg");
+      e.className = "msg " + t;
+      e.textContent = m;
+    }
+
+    // ---------- INIT ----------
+    isiDropdownDesa();
+    isiKelompok();
+    $("desa").addEventListener("change", isiKelompok);
+
+    const saved = localStorage.getItem("profil");
+    if (saved) {
+      try {
+        profil = JSON.parse(saved);
+        tampilkanProfilTersimpan();
+        $("nama").value = profil.nama;
+        $("desa").value = profil.desa;
+        isiKelompok();
+        $("kelompok").value = profil.kelompok;
+        $("jk").value = profil.jk;
+        $("pin").value = profil.pin;
+      } catch (e) {}
+    }
+
+    // stop kamera saat tab tersembunyi
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) hentikanScan();
+      else if (document.getElementById("panel-scan").classList.contains("active")) mulaiScan();
+    });
+  </script>
+</body>
+</html>

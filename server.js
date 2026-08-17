@@ -149,6 +149,10 @@ app.get("/api/pantau/status", async (req, res) => {
 // Halaman pantau untuk orang tua
 app.get("/pantau", (_req, res) => res.sendFile(path.join(__dirname, "pantau.html")));
 
+// Halaman absen via web (untuk iPhone / HP tanpa app)
+app.get("/absen", (_req, res) => res.sendFile(path.join(__dirname, "absen.html")));
+app.get("/jsqr.js", (_req, res) => res.sendFile(path.join(__dirname, "jsqr.js")));
+
 // Dashboard
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
 
