@@ -4,12 +4,13 @@ const crypto = require("crypto");
 const path = require("path");
 const { init } = require("./db");
 const { DESA_KELOMPOK, DESA_BEBAS, normalisasi, desaValid, desaBebas, kelompokValid } = require("./desa");
+const face = require("./face");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "8mb" }));
 
 let db;
 let DB_TYPE = "sqlite";
@@ -67,18 +68,63 @@ app.post("/api/absen", async (req, res) => {
 
   await db.saveSiswa(siswaId, nama, kelompok, jenis_kelamin);
 
+  // Cocokkan wajah selfie dengan foto referensi (jika sudah ada)
+  let cocokWajah = null;
+  if (foto) {
+    const ref = await db.cariFotoRef(siswaId);
+    if (ref && ref.desk_ref) {
+      const d = await face.deskriptorFoto(foto);
+      const j = face.dist(d, JSON.parse(ref.desk_ref));
+      const toleransi = parseFloat(process.env.WAJAH_TOLERANSI || "0.5");
+      cocokWajah = d && j <= toleransi ? "COCOK" : "TIDAK COCOK";
+    }
+  }
+
   const { tgl, jam } = nowID();
   const sudah = await db.sudahAbsen(siswaId, tgl, jam);
   if (sudah) {
     return res.status(409).json({ ok: false, pesan: `Sudah tercatat masuk pada jam ${jam}.` });
   }
 
-  const id = await db.insertAbsen(siswaId, nama, kelompok, jenis_kelamin, desaFinal, jam, tgl, foto || null);
+  const id = await db.insertAbsen(siswaId, nama, kelompok, jenis_kelamin, desaFinal, jam, tgl, foto || null, cocokWajah);
+  const pesan = cocokWajah === "TIDAK COCOK"
+    ? `Absen tercatat, tapi WAJAH TIDAK COCOK dengan foto profil.`
+    : `Absen berhasil. Selamat datang, ${nama}!`;
   res.status(201).json({
     ok: true,
-    pesan: `Absen berhasil. Selamat datang, ${nama}!`,
+    pesan,
+    cocok_wajah: cocokWajah,
     data: { id, jam_masuk: jam, tanggal: tgl },
   });
+});
+
+// [POST] /api/siswa/foto  ->  simpan foto referensi wajah siswa
+app.post("/api/siswa/foto", async (req, res) => {
+  const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, foto } = req.body;
+  if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
+    return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });
+  }
+  if (!nama || !kelompok || !jenis_kelamin || !desa || !foto) {
+    return res.status(400).json({ ok: false, pesan: "Data tidak lengkap." });
+  }
+  if (typeof foto !== "string" || foto.length > 4_000_000) {
+    return res.status(400).json({ ok: false, pesan: "Foto tidak valid (maks 4 MB base64)." });
+  }
+  const desaFinal = desaBebas(desa) ? DESA_BEBAS : normalisasi(desa);
+  const siswaId = crypto
+    .createHash("sha256")
+    .update(`${nama}|${kelompok}|${jenis_kelamin}|${desaFinal}`)
+    .digest("hex")
+    .slice(0, 16);
+
+  const desk = await face.deskriptorFoto(foto);
+  if (!desk) {
+    return res.status(400).json({ ok: false, pesan: "Tidak ada wajah terdeteksi di foto. Coba lagi dengan pencahayaan baik." });
+  }
+
+  await db.saveSiswa(siswaId, nama, kelompok, jenis_kelamin);
+  await db.simpanFotoRef(siswaId, foto, JSON.stringify(desk));
+  res.json({ ok: true, pesan: "Foto referensi wajah tersimpan." });
 });
 
 // [GET] /api/absensi?tanggal=YYYY-MM-DD
@@ -93,6 +139,116 @@ app.get("/api/statistik", async (req, res) => {
   const tanggal = req.query.tanggal || nowID().tgl;
   const s = await db.statistik(tanggal);
   res.json({ ok: true, tanggal, total: s.total, per_kelompok: s.perKelompok });
+});
+
+// [GET] /api/rekap?tanggal=YYYY-MM-DD  ->  rekap harian per desa
+app.get("/api/rekap", async (req, res) => {
+  const tanggal = req.query.tanggal || nowID().tgl;
+  const rows = await db.listAbsensi(tanggal);
+  const perDesa = {};
+  for (const r of rows) {
+    if (!perDesa[r.desa]) perDesa[r.desa] = [];
+    perDesa[r.desa].push(r);
+  }
+  const data = Object.keys(perDesa)
+    .sort()
+    .map((desa) => ({
+      desa,
+      total: perDesa[desa].length,
+      per_kelompok: Object.values(
+        perDesa[desa].reduce((acc, r) => {
+          acc[r.kelompok] = (acc[r.kelompok] || 0) + 1;
+          return acc;
+        }, {})
+      ).length === 0 ? [] : (() => {
+        const m = {};
+        for (const r of perDesa[desa]) m[r.kelompok] = (m[r.kelompok] || 0) + 1;
+        return Object.entries(m).map(([kelompok, jumlah]) => ({ kelompok, jumlah }));
+      })(),
+      siswa: perDesa[desa].map((r) => ({
+        id: r.id,
+        nama: r.nama,
+        kelompok: r.kelompok,
+        jam_masuk: r.jam_masuk,
+        foto: r.foto || null,
+        cocok_wajah: r.cocok_wajah || null,
+      })),
+    }));
+  res.json({ ok: true, tanggal, total: rows.length, data });
+});
+
+// [GET] /api/rekap-bulanan?bulan=YYYY-MM  ->  rekap bulanan per siswa
+app.get("/api/rekap-bulanan", async (req, res) => {
+  const bulan = req.query.bulan || nowID().tgl.slice(0, 7);
+  const [y, m] = bulan.split("-").map(Number);
+  const akhir = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const dari = `${bulan}-01`;
+  const sampai = `${bulan}-${String(akhir).padStart(2, "0")}`;
+  const rows = await db.listAbsensiRange(dari, sampai);
+  const perSiswa = {};
+  for (const r of rows) {
+    const k = `${r.nama}|${r.kelompok}|${r.desa}`;
+    if (!perSiswa[k]) {
+      perSiswa[k] = {
+        nama: r.nama,
+        kelompok: r.kelompok,
+        desa: r.desa,
+        hariHadir: [],
+        catatan: 0,
+        cocokWajah: r.cocok_wajah === "TIDAK COCOK" ? 1 : 0,
+      };
+    }
+    perSiswa[k].hariHadir.push(r.tanggal);
+    perSiswa[k].catatan++;
+    if (r.cocok_wajah === "TIDAK COCOK") perSiswa[k].cocokWajah++;
+  }
+  const data = Object.values(perSiswa)
+    .map((s) => ({ ...s, hariHadir: [...new Set(s.hariHadir)].sort() }))
+    .sort((a, b) => a.nama.localeCompare(b.nama));
+  res.json({ ok: true, bulan, total_siswa: data.length, data });
+});
+
+// [POST] /api/absen-manual  ->  petugas mencatat absen tanpa foto
+app.post("/api/absen-manual", async (req, res) => {
+  const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, jam_manual } = req.body;
+  if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
+    return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });
+  }
+  if (!nama || !kelompok || !jenis_kelamin || !desa) {
+    return res.status(400).json({ ok: false, pesan: "Data tidak lengkap." });
+  }
+  if (!desaValid(desa)) {
+    return res.status(400).json({ ok: false, pesan: `Desa tidak dikenal: ${desa}` });
+  }
+  if (!desaBebas(desa) && !kelompokValid(desa, kelompok)) {
+    return res.status(400).json({
+      ok: false,
+      pesan: `Kelompok "${kelompok}" tidak terdaftar di desa ${normalisasi(desa)}.`,
+    });
+  }
+
+  const desaFinal = desaBebas(desa) ? DESA_BEBAS : normalisasi(desa);
+  const siswaId = crypto
+    .createHash("sha256")
+    .update(`${nama}|${kelompok}|${jenis_kelamin}|${desaFinal}`)
+    .digest("hex")
+    .slice(0, 16);
+
+  await db.saveSiswa(siswaId, nama, kelompok, jenis_kelamin);
+
+  const { tgl } = nowID();
+  const jam = jam_manual || nowID().jam;
+  const sudah = await db.sudahAbsen(siswaId, tgl, jam);
+  if (sudah) {
+    return res.status(409).json({ ok: false, pesan: `Sudah tercatat masuk pada jam ${jam}.` });
+  }
+
+  const id = await db.insertAbsen(siswaId, nama, kelompok, jenis_kelamin, desaFinal, jam, tgl, null, null);
+  res.status(201).json({
+    ok: true,
+    pesan: `Absen manual tercatat untuk ${nama} (jam ${jam}).`,
+    data: { id, jam_masuk: jam, tanggal: tgl },
+  });
 });
 
 // [GET] /api/export?dari=YYYY-MM-DD&sampai=YYYY-MM-DD  -> untuk aplikasi desktop / Excel

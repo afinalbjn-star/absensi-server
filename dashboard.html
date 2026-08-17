@@ -36,6 +36,7 @@
   <div class="row">
     <div class="card"><div class="label">Total Hadir Hari Ini</div><div class="val" id="total">-</div></div>
     <div class="card"><div class="label">Kelompok</div><div class="val" id="kel-ct" style="font-size:18px;">-</div></div>
+    <div class="card"><div class="label">Wajah Tak Cocok</div><div class="val" id="wajah-buruk" style="font-size:24px;color:#d97706;">-</div></div>
   </div>
 
   <div style="margin-bottom:12px;">
@@ -43,9 +44,11 @@
     <label class="auto" style="margin-top:8px;"><input type="checkbox" id="auto" checked /> Auto-refresh setiap 5 detik</label>
   </div>
 
+  <div id="rekap" style="margin-bottom:24px;"></div>
+
   <table>
     <thead>
-      <tr><th>Jam Masuk</th><th>Nama</th><th>Kelompok</th><th>Jenis Kelamin</th><th>Desa</th></tr>
+      <tr><th>Jam Masuk</th><th>Nama</th><th>Kelompok</th><th>Jenis Kelamin</th><th>Desa</th><th>Cocok Wajah</th></tr>
     </thead>
     <tbody id="rows"></tbody>
   </table>
@@ -59,14 +62,29 @@
 
     async function load() {
       const tgl = tanggalInput.value;
-      const [abs, stat] = await Promise.all([
+      const [abs, stat, rekap] = await Promise.all([
         fetch(`/api/absensi?tanggal=${tgl}`).then(r => r.json()),
         fetch(`/api/statistik?tanggal=${tgl}`).then(r => r.json()),
+        fetch(`/api/rekap?tanggal=${tgl}`).then(r => r.json()),
       ]);
 
       document.getElementById("total").textContent = stat.total;
       const perK = stat.per_kelompok.map(k => `${k.kelompok}: ${k.jumlah}`).join(" · ");
       document.getElementById("kel-ct").textContent = perK || "Belum ada";
+      document.getElementById("wajah-buruk").textContent =
+        abs.data.filter(a => a.cocok_wajah === "TIDAK COCOK").length;
+
+      // Rekap per desa
+      const rekapBox = document.getElementById("rekap");
+      rekapBox.innerHTML = "";
+      rekap.data.forEach(d => {
+        const div = document.createElement("div");
+        div.style.cssText = "background:#fff;border-radius:12px;padding:14px 18px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);";
+        const k = d.per_kelompok.map(x => `${x.kelompok}: ${x.jumlah}`).join(" · ");
+        div.innerHTML = `<b>${d.desa}</b> — ${d.total} hadir
+          <span style="color:#64748b;font-size:13px;">(${k})</span>`;
+        rekapBox.appendChild(div);
+      });
 
       const rows = document.getElementById("rows");
       rows.innerHTML = "";
@@ -74,11 +92,14 @@
         const tr = document.createElement("tr");
         const jk = a.jenis_kelamin.toLowerCase().startsWith("l")
           ? '<span class="badge l">L</span>' : '<span class="badge p">P</span>';
-        tr.innerHTML = `<td>${a.jam_masuk}</td><td>${a.nama}</td><td>${a.kelompok}</td><td>${jk}</td><td>${a.desa || '-'}</td>`;
+        const w = a.cocok_wajah === "COCOK" ? '<span class="badge" style="background:#bbf7d0;color:#166534;">✓ COCOK</span>'
+          : a.cocok_wajah === "TIDAK COCOK" ? '<span class="badge" style="background:#fed7aa;color:#9a3412;">✗ TIDAK COCOK</span>'
+          : '-';
+        tr.innerHTML = `<td>${a.jam_masuk}</td><td>${a.nama}</td><td>${a.kelompok}</td><td>${jk}</td><td>${a.desa || '-'}</td><td>${w}</td>`;
         rows.appendChild(tr);
       });
       if (!abs.data.length) {
-        rows.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">Belum ada data</td></tr>';
+        rows.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;">Belum ada data</td></tr>';
       }
     }
 

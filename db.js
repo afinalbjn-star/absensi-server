@@ -16,7 +16,9 @@ async function init() {
         id            TEXT PRIMARY KEY,
         nama          TEXT NOT NULL,
         kelompok      TEXT NOT NULL,
-        jenis_kelamin TEXT NOT NULL
+        jenis_kelamin TEXT NOT NULL,
+        foto_ref      TEXT,
+        desk_ref      TEXT
       );
       CREATE TABLE IF NOT EXISTS absensi (
         id            SERIAL PRIMARY KEY,
@@ -27,9 +29,13 @@ async function init() {
         desa          TEXT NOT NULL,
         jam_masuk     TEXT NOT NULL,
         tanggal       TEXT NOT NULL,
-        foto          TEXT
+        foto          TEXT,
+        cocok_wajah   TEXT
       );
       ALTER TABLE absensi ADD COLUMN IF NOT EXISTS foto TEXT;
+      ALTER TABLE absensi ADD COLUMN IF NOT EXISTS cocok_wajah TEXT;
+      ALTER TABLE siswa ADD COLUMN IF NOT EXISTS foto_ref TEXT;
+      ALTER TABLE siswa ADD COLUMN IF NOT EXISTS desk_ref TEXT;
       CREATE TABLE IF NOT EXISTS pantau (
         kode      TEXT PRIMARY KEY,
         siswa_id  TEXT NOT NULL UNIQUE,
@@ -45,6 +51,17 @@ async function init() {
           [id, nama, kelompok, jk]
         );
       },
+      simpanFotoRef(id, fotoRef, deskRef) {
+        return pool.query(
+          `UPDATE siswa SET foto_ref=$2, desk_ref=$3 WHERE id=$1`,
+          [id, fotoRef, deskRef]
+        );
+      },
+      cariFotoRef(id) {
+        return pool
+          .query(`SELECT foto_ref, desk_ref FROM siswa WHERE id=$1`, [id])
+          .then((r) => r.rows[0] || null);
+      },
       sudahAbsen(siswaId, tgl, jam) {
         return pool
           .query(
@@ -54,12 +71,12 @@ async function init() {
           )
           .then((r) => r.rows[0]);
       },
-      insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl, foto) {
+      insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl, foto, cocokWajah) {
         return pool
           .query(
-            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal, foto)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-            [siswaId, nama, kelompok, jk, desa, jam, tgl, foto]
+            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal, foto, cocok_wajah)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+            [siswaId, nama, kelompok, jk, desa, jam, tgl, foto, cocokWajah]
           )
           .then((r) => r.rows[0].id);
       },
@@ -121,7 +138,9 @@ async function init() {
       id            TEXT PRIMARY KEY,
       nama          TEXT NOT NULL,
       kelompok      TEXT NOT NULL,
-      jenis_kelamin TEXT NOT NULL
+      jenis_kelamin TEXT NOT NULL,
+      foto_ref      TEXT,
+      desk_ref      TEXT
     );
     CREATE TABLE IF NOT EXISTS absensi (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,13 +151,24 @@ async function init() {
       desa          TEXT NOT NULL,
       jam_masuk     TEXT NOT NULL,
       tanggal       TEXT NOT NULL,
-      foto          TEXT
+      foto          TEXT,
+      cocok_wajah   TEXT
     );
   `);
   // Migrasi: tambahkan kolom foto jika tabel absensi lama belum memilikinya
   const absenCols = db.prepare(`PRAGMA table_info(absensi)`).all().map((c) => c.name);
   if (!absenCols.includes("foto")) {
     db.exec(`ALTER TABLE absensi ADD COLUMN foto TEXT`);
+  }
+  if (!absenCols.includes("cocok_wajah")) {
+    db.exec(`ALTER TABLE absensi ADD COLUMN cocok_wajah TEXT`);
+  }
+  const siswaCols = db.prepare(`PRAGMA table_info(siswa)`).all().map((c) => c.name);
+  if (!siswaCols.includes("foto_ref")) {
+    db.exec(`ALTER TABLE siswa ADD COLUMN foto_ref TEXT`);
+  }
+  if (!siswaCols.includes("desk_ref")) {
+    db.exec(`ALTER TABLE siswa ADD COLUMN desk_ref TEXT`);
   }
   db.exec(`
     CREATE TABLE IF NOT EXISTS pantau (
@@ -159,6 +189,14 @@ async function init() {
           .run(id, nama, kelompok, jk)
       );
     },
+    simpanFotoRef(id, fotoRef, deskRef) {
+      return Promise.resolve(
+        db.prepare(`UPDATE siswa SET foto_ref=?, desk_ref=? WHERE id=?`).run(fotoRef, deskRef, id)
+      );
+    },
+    cariFotoRef(id) {
+      return Promise.resolve(db.prepare(`SELECT foto_ref, desk_ref FROM siswa WHERE id=?`).get(id) || null);
+    },
     sudahAbsen(siswaId, tgl, jam) {
       return Promise.resolve(
         db
@@ -168,14 +206,14 @@ async function init() {
           .get(siswaId, tgl, jam)
       );
     },
-    insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl, foto) {
+    insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl, foto, cocokWajah) {
       return Promise.resolve(
         db
           .prepare(
-            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal, foto)
-             VALUES (?,?,?,?,?,?,?,?)`
+            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal, foto, cocok_wajah)
+             VALUES (?,?,?,?,?,?,?,?,?)`
           )
-          .run(siswaId, nama, kelompok, jk, desa, jam, tgl, foto).lastInsertRowid
+          .run(siswaId, nama, kelompok, jk, desa, jam, tgl, foto, cocokWajah).lastInsertRowid
       );
     },
     listAbsensi(tgl) {
