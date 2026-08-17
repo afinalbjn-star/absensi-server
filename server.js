@@ -15,10 +15,22 @@ let db;
 let DB_TYPE = "sqlite";
 
 function nowID() {
+  // Selalu pakai zona waktu Indonesia Barat (WIB), terlepas dari zona server
+  const fmtTgl = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const fmtJam = new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
   const d = new Date();
-  const tgl = d.toLocaleDateString("en-CA");
-  const jam = d.toLocaleTimeString("id-ID", { hour12: false });
-  return { tgl, jam };
+  return { tgl: fmtTgl.format(d), jam: fmtJam.format(d) };
 }
 
 // [POST] /api/absen
