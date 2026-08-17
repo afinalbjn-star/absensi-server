@@ -4,8 +4,8 @@
   "description": "Server absensi siswa berbasis Node.js + Express + SQLite",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node --expose-gc server.js",
+    "dev": "node --watch --expose-gc server.js"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",

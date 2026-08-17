@@ -28,7 +28,7 @@ async function siapkan() {
   _ready = (async () => {
     await faceapi.tf.setWasmPaths(WASM_DIR + path.sep);
     await faceapi.tf.ready();
-    _net = new faceapi.SsdMobilenetv1({ size: 256 });
+    _net = new faceapi.TinyFaceDetector();
     _rec = new faceapi.FaceRecognitionNet();
     await _net.loadFromDisk(MODEL_DIR);
     await _rec.loadFromDisk(MODEL_DIR);
@@ -67,14 +67,23 @@ async function deskriptorFoto(base64) {
   if (!base64) return null;
   try {
     await siapkan();
-    const t = decodeToTensor(base64);
+    // startScope/endScope membuang otomatis semua tensor perantara -> mencegah
+    // kebocoran memori WASM yang bisa menjatuhkan Render free (512MB).
+    const engine = faceapi.tf.engine();
+    engine.startScope();
     try {
-      const boxes = await _net.locateFaces(t, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.2 }));
+      const t = decodeToTensor(base64);
+      // Coba ukuran kecil (hemat memori); naikkan ke 416 bila wajah tak terdeteksi
+      let boxes = await _net.locateFaces(t, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 }));
+      if (!boxes.length) {
+        boxes = await _net.locateFaces(t, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }));
+      }
       if (!boxes.length) return null;
       const d = await _rec.computeFaceDescriptor(t, boxes[0]);
       return Array.from(d);
     } finally {
-      t.dispose();
+      engine.endScope();
+      if (global.gc) global.gc(); // lepas memori ke OS bila dijalankan dengan --expose-gc
     }
   } catch (e) {
     console.error("[face] gagal hitung deskriptor:", e.message);
