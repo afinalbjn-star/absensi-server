@@ -80,7 +80,9 @@ async function deskriptorFoto(base64) {
       }
       if (!boxes.length) return null;
       const d = await _rec.computeFaceDescriptor(t, boxes[0]);
-      return Array.from(d);
+      const out = Array.from(d);
+      if (d.dispose) d.dispose();
+      return out;
     } finally {
       engine.endScope();
       if (global.gc) global.gc(); // lepas memori ke OS bila dijalankan dengan --expose-gc

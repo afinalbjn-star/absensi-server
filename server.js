@@ -267,6 +267,11 @@ app.get("/api/desa", (_req, res) =>
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true, db: DB_TYPE }));
 
+// Info versi (untuk verifikasi build mana yang sedang live)
+app.get("/api/versi", (_req, res) =>
+  res.json({ ok: true, versi: "2c8628a-tiny", fitur: ["face-match", "rekap", "rekap-bulanan", "absen-manual"] })
+);
+
 // [POST] /api/pantau/kode  ->  buat/ambil kode pantau untuk siswa
 app.post("/api/pantau/kode", async (req, res) => {
   const { kode_sekolah, nama, kelompok, jenis_kelamin, desa } = req.body;
