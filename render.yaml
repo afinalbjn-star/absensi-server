@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: absensi-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # isi manual dengan URL Postgres dari Neon
+      - key: KODE_SEKOLAH
+        sync: false          # isi manual (mis. SMAN1)
+      - key: PORT
+        value: 3000

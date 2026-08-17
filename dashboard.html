@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Absensi Siswa</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f1f5f9; color: #0f172a; padding: 24px; }
+    h1 { margin-bottom: 4px; }
+    .sub { color: #64748b; margin-bottom: 24px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    .card {
+      background: #fff; border-radius: 12px; padding: 20px; flex: 1 1 200px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    }
+    .card .label { font-size: 13px; color: #64748b; }
+    .card .val { font-size: 28px; font-weight: 700; margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    th, td { padding: 10px 14px; text-align: left; font-size: 14px; }
+    th { background: #0f172a; color: #fff; }
+    tr:nth-child(even) { background: #f8fafc; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .l { background: #c7d2fe; color: #3730a3; }
+    .p { background: #fbcfe8; color: #9d174d; }
+    input[type=date] { padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; }
+    .auto { margin-top: 16px; }
+    .auto label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #475569; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Dashboard Absensi Siswa</h1>
+  <div class="sub">Live monitoring — data diterima dari aplikasi Android siswa</div>
+
+  <div class="row">
+    <div class="card"><div class="label">Total Hadir Hari Ini</div><div class="val" id="total">-</div></div>
+    <div class="card"><div class="label">Kelompok</div><div class="val" id="kel-ct" style="font-size:18px;">-</div></div>
+  </div>
+
+  <div style="margin-bottom:12px;">
+    <input type="date" id="tanggal" />
+    <label class="auto" style="margin-top:8px;"><input type="checkbox" id="auto" checked /> Auto-refresh setiap 5 detik</label>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Jam Masuk</th><th>Nama</th><th>Kelompok</th><th>Jenis Kelamin</th><th>Desa</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    const tanggalInput = document.getElementById("tanggal");
+    const autoCheck = document.getElementById("auto");
+
+    const today = new Date().toLocaleDateString("en-CA");
+    tanggalInput.value = today;
+
+    async function load() {
+      const tgl = tanggalInput.value;
+      const [abs, stat] = await Promise.all([
+        fetch(`/api/absensi?tanggal=${tgl}`).then(r => r.json()),
+        fetch(`/api/statistik?tanggal=${tgl}`).then(r => r.json()),
+      ]);
+
+      document.getElementById("total").textContent = stat.total;
+      const perK = stat.per_kelompok.map(k => `${k.kelompok}: ${k.jumlah}`).join(" · ");
+      document.getElementById("kel-ct").textContent = perK || "Belum ada";
+
+      const rows = document.getElementById("rows");
+      rows.innerHTML = "";
+      abs.data.forEach(a => {
+        const tr = document.createElement("tr");
+        const jk = a.jenis_kelamin.toLowerCase().startsWith("l")
+          ? '<span class="badge l">L</span>' : '<span class="badge p">P</span>';
+        tr.innerHTML = `<td>${a.jam_masuk}</td><td>${a.nama}</td><td>${a.kelompok}</td><td>${jk}</td><td>${a.desa || '-'}</td>`;
+        rows.appendChild(tr);
+      });
+      if (!abs.data.length) {
+        rows.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">Belum ada data</td></tr>';
+      }
+    }
+
+    tanggalInput.addEventListener("change", load);
+    load();
+    setInterval(() => { if (autoCheck.checked) load(); }, 5000);
+  </script>
+</body>
+</html>
