@@ -40,10 +40,26 @@ async function siapkan() {
 function decodeToTensor(base64) {
   const buf = Buffer.from(base64, "base64");
   const img = jpeg.decode(buf, { useTArray: true, maxMemoryUsageInMB: 512 });
-  const t = faceapi.tf.tensor3d(new Uint8Array(img.data), [img.height, img.width, 4]);
-  const rgb = t.slice([0, 0, 0], [img.height, img.width, 3]);
-  t.dispose();
-  return rgb;
+  const { width, height } = img;
+  // Kecilkan gambar agar tidak membebani memori/CPU (penting di Render free 512MB).
+  const maks = 400;
+  const skala = Math.min(1, maks / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * skala));
+  const h = Math.max(1, Math.round(height * skala));
+  const data = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(width - 1, Math.floor(x / skala));
+      const sy = Math.min(height - 1, Math.floor(y / skala));
+      const si = (sy * width + sx) * 4;
+      const di = (y * w + x) * 3;
+      data[di] = img.data[si];
+      data[di + 1] = img.data[si + 1];
+      data[di + 2] = img.data[si + 2];
+    }
+  }
+  const t = faceapi.tf.tensor3d(data, [h, w, 3]);
+  return t;
 }
 
 /// Ambil deskriptor wajah (Array 128 angka) dari base64 foto JPEG. null jika tak ada wajah.
