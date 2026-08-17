@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 
 const USE_POSTGRES = !!process.env.DATABASE_URL;
 
@@ -29,6 +30,11 @@ async function init() {
         foto          TEXT
       );
       ALTER TABLE absensi ADD COLUMN IF NOT EXISTS foto TEXT;
+      CREATE TABLE IF NOT EXISTS pantau (
+        kode      TEXT PRIMARY KEY,
+        siswa_id  TEXT NOT NULL UNIQUE,
+        nama      TEXT NOT NULL
+      );
     `);
     return {
       type: "postgres",
@@ -79,6 +85,30 @@ async function init() {
           ),
         ]).then(([t, k]) => ({ total: t.rows[0].c, perKelompok: k.rows }));
       },
+      cariKodePantau(siswaId) {
+        return pool
+          .query(`SELECT kode FROM pantau WHERE siswa_id=$1`, [siswaId])
+          .then((r) => (r.rows[0] ? r.rows[0].kode : null));
+      },
+      simpanKodePantau(siswaId, nama) {
+        return pool
+          .query(
+            `INSERT INTO pantau (kode, siswa_id, nama) VALUES ($1,$2,$3)
+             ON CONFLICT (siswa_id) DO UPDATE SET nama=$3 RETURNING kode`,
+            [crypto.randomBytes(6).toString("hex"), siswaId, nama]
+          )
+          .then((r) => r.rows[0].kode);
+      },
+      cariSiswaByKode(kode) {
+        return pool
+          .query(`SELECT siswa_id, nama FROM pantau WHERE kode=$1`, [kode])
+          .then((r) => r.rows[0] || null);
+      },
+      absenTerakhirSiswa(siswaId, tgl) {
+        return pool
+          .query(`SELECT * FROM absensi WHERE siswa_id=$1 AND tanggal=$2 ORDER BY id DESC LIMIT 1`, [siswaId, tgl])
+          .then((r) => r.rows[0] || null);
+      },
     };
   }
 
@@ -110,6 +140,13 @@ async function init() {
   if (!absenCols.includes("foto")) {
     db.exec(`ALTER TABLE absensi ADD COLUMN foto TEXT`);
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pantau (
+      kode      TEXT PRIMARY KEY,
+      siswa_id  TEXT NOT NULL UNIQUE,
+      nama      TEXT NOT NULL
+    );
+  `);
   return {
     type: "sqlite",
     saveSiswa(id, nama, kelompok, jk) {
@@ -158,6 +195,27 @@ async function init() {
         total: db.prepare(`SELECT COUNT(*) AS c FROM absensi WHERE tanggal=?`).get(tgl).c,
         perKelompok: db.prepare(`SELECT kelompok, COUNT(*) AS jumlah FROM absensi WHERE tanggal=? GROUP BY kelompok`).all(tgl),
       });
+    },
+    cariKodePantau(siswaId) {
+      const r = db.prepare(`SELECT kode FROM pantau WHERE siswa_id=?`).get(siswaId);
+      return Promise.resolve(r ? r.kode : null);
+    },
+    simpanKodePantau(siswaId, nama) {
+      const r = db
+        .prepare(
+          `INSERT INTO pantau (kode, siswa_id, nama) VALUES (?,?,?)
+           ON CONFLICT(siswa_id) DO UPDATE SET nama=excluded.nama`
+        )
+        .run(crypto.randomBytes(6).toString("hex"), siswaId, nama);
+      return Promise.resolve(db.prepare(`SELECT kode FROM pantau WHERE siswa_id=?`).get(siswaId).kode);
+    },
+    cariSiswaByKode(kode) {
+      return Promise.resolve(db.prepare(`SELECT siswa_id, nama FROM pantau WHERE kode=?`).get(kode) || null);
+    },
+    absenTerakhirSiswa(siswaId, tgl) {
+      return Promise.resolve(
+        db.prepare(`SELECT * FROM absensi WHERE siswa_id=? AND tanggal=? ORDER BY id DESC LIMIT 1`).get(siswaId, tgl) || null
+      );
     },
   };
 }

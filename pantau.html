@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pantau Kehadiran</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(160deg, #2563eb, #1e40af);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0,0,0,.3);
+      text-align: center;
+    }
+    .logo { font-size: 14px; color: #2563eb; font-weight: 700; letter-spacing: 1px; }
+    h2 { margin: 6px 0 4px; color: #0f172a; font-size: 22px; }
+    .tanggal { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+    .status-box { padding: 18px; border-radius: 14px; margin: 14px 0; }
+    .hadir { background: #dcfce7; border: 1px solid #86efac; }
+    .belum { background: #f1f5f9; border: 1px solid #cbd5e1; }
+    .status-icon { font-size: 40px; }
+    .hadir .status-icon { color: #16a34a; }
+    .belum .status-icon { color: #94a3b8; }
+    .status-text { font-size: 18px; font-weight: 700; margin-top: 6px; }
+    .hadir .status-text { color: #166534; }
+    .belum .status-text { color: #475569; }
+    .jam { font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 6px; }
+    .meta { font-size: 13px; color: #475569; margin-top: 8px; }
+    img.foto {
+      width: 110px; height: 110px; object-fit: cover;
+      border-radius: 50%; border: 3px solid #2563eb; margin-top: 14px;
+    }
+    .msg { color: #64748b; font-size: 14px; padding: 20px 0; }
+    .footer { font-size: 11px; color: #94a3b8; margin-top: 18px; }
+    .error { color: #dc2626; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">ABSENSI MM BJN TIMUR</div>
+    <h2 id="nama">Memuat...</h2>
+    <div class="tanggal" id="tanggal"></div>
+    <div id="isi">
+      <div class="msg">Mengecek status...</div>
+    </div>
+    <div class="footer">Aplikasi Absensi Pengajian MUMI Bojonegoro Timur</div>
+  </div>
+  <script>
+    const kode = new URLSearchParams(location.search).get("kode") || "";
+
+    async function muat() {
+      try {
+        const res = await fetch("/api/pantau/status?kode=" + encodeURIComponent(kode));
+        const j = await res.json();
+        document.getElementById("nama").textContent = j.ditemukan ? j.nama : "Tidak Dikenal";
+        document.getElementById("tanggal").textContent = j.ditemukan ? j.tanggal : "";
+        const isi = document.getElementById("isi");
+
+        if (!j.ditemukan) {
+          isi.innerHTML = '<div class="msg error">Link tidak valid.<br>Minta ulang ke petugas / anak Anda.</div>';
+          return;
+        }
+        if (!j.absen) {
+          isi.innerHTML = `
+            <div class="status-box belum">
+              <div class="status-icon">⏳</div>
+              <div class="status-text">Belum tercatat hadir</div>
+              <div class="meta">Ananda belum tercatat masuk hari ini.<br>Pantau kembali beberapa saat lagi.</div>
+            </div>`;
+          return;
+        }
+        isi.innerHTML = `
+          <div class="status-box hadir">
+            <div class="status-icon">✅</div>
+            <div class="status-text">SUDAH HADIR</div>
+            <div class="jam">${j.absen.jam_masuk}</div>
+            <div class="meta">Kelompok: ${j.absen.kelompok} &nbsp;·&nbsp; ${j.absen.desa}</div>
+          </div>
+          ${j.absen.foto ? `<img class="foto" src="data:image/jpeg;base64,${j.absen.foto}" alt="foto" />` : ""}`;
+      } catch (e) {
+        document.getElementById("nama").textContent = "Kesalahan";
+        document.getElementById("isi").innerHTML = '<div class="msg error">Gagal memuat data. Periksa koneksi internet.</div>';
+      }
+    }
+    muat();
+  </script>
+</body>
+</html>

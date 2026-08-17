@@ -99,6 +99,56 @@ app.get("/api/desa", (_req, res) =>
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true, db: DB_TYPE }));
 
+// [POST] /api/pantau/kode  ->  buat/ambil kode pantau untuk siswa
+app.post("/api/pantau/kode", async (req, res) => {
+  const { kode_sekolah, nama, kelompok, jenis_kelamin, desa } = req.body;
+  if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
+    return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });
+  }
+  if (!nama || !kelompok || !jenis_kelamin || !desa) {
+    return res.status(400).json({ ok: false, pesan: "Data tidak lengkap." });
+  }
+  const desaFinal = desaBebas(desa) ? DESA_BEBAS : normalisasi(desa);
+  const siswaId = crypto
+    .createHash("sha256")
+    .update(`${nama}|${kelompok}|${jenis_kelamin}|${desaFinal}`)
+    .digest("hex")
+    .slice(0, 16);
+
+  const kode = await db.cariKodePantau(siswaId);
+  const hasil = kode || (await db.simpanKodePantau(siswaId, nama));
+  res.json({ ok: true, kode: hasil, link: `/pantau?kode=${hasil}` });
+});
+
+// [GET] /api/pantau/status?kode=...  ->  status kehadiran siswa hari ini
+app.get("/api/pantau/status", async (req, res) => {
+  const kode = (req.query.kode || "").trim();
+  if (!kode) return res.status(400).json({ ok: false, pesan: "Butuh kode." });
+  const siswa = await db.cariSiswaByKode(kode);
+  if (!siswa) {
+    return res.json({ ok: true, ditemukan: false, pesan: "Kode tidak dikenal." });
+  }
+  const { tgl } = nowID();
+  const absen = await db.absenTerakhirSiswa(siswa.siswa_id, tgl);
+  res.json({
+    ok: true,
+    ditemukan: true,
+    nama: siswa.nama,
+    tanggal: tgl,
+    absen: absen
+      ? {
+          jam_masuk: absen.jam_masuk,
+          kelompok: absen.kelompok,
+          desa: absen.desa,
+          foto: absen.foto || null,
+        }
+      : null,
+  });
+});
+
+// Halaman pantau untuk orang tua
+app.get("/pantau", (_req, res) => res.sendFile(path.join(__dirname, "pantau.html")));
+
 // Dashboard
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
 
