@@ -23,13 +23,16 @@ function nowID() {
 
 // [POST] /api/absen
 app.post("/api/absen", async (req, res) => {
-  const { nama, kelompok, jenis_kelamin, desa, kode_sekolah } = req.body;
+  const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, foto } = req.body;
 
   if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
     return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });
   }
   if (!nama || !kelompok || !jenis_kelamin || !desa) {
     return res.status(400).json({ ok: false, pesan: "Data tidak lengkap." });
+  }
+  if (foto && (typeof foto !== "string" || foto.length > 4_000_000)) {
+    return res.status(400).json({ ok: false, pesan: "Foto tidak valid (maks 4 MB base64)." });
   }
   if (!desaValid(desa)) {
     return res.status(400).json({ ok: false, pesan: `Desa tidak dikenal: ${desa}` });
@@ -58,7 +61,7 @@ app.post("/api/absen", async (req, res) => {
     return res.status(409).json({ ok: false, pesan: `Sudah tercatat masuk pada jam ${jam}.` });
   }
 
-  const id = await db.insertAbsen(siswaId, nama, kelompok, jenis_kelamin, desaFinal, jam, tgl);
+  const id = await db.insertAbsen(siswaId, nama, kelompok, jenis_kelamin, desaFinal, jam, tgl, foto || null);
   res.status(201).json({
     ok: true,
     pesan: `Absen berhasil. Selamat datang, ${nama}!`,

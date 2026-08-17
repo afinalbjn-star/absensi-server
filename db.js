@@ -25,8 +25,10 @@ async function init() {
         jenis_kelamin TEXT NOT NULL,
         desa          TEXT NOT NULL,
         jam_masuk     TEXT NOT NULL,
-        tanggal       TEXT NOT NULL
+        tanggal       TEXT NOT NULL,
+        foto          TEXT
       );
+      ALTER TABLE absensi ADD COLUMN IF NOT EXISTS foto TEXT;
     `);
     return {
       type: "postgres",
@@ -46,12 +48,12 @@ async function init() {
           )
           .then((r) => r.rows[0]);
       },
-      insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl) {
+      insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl, foto) {
         return pool
           .query(
-            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal)
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-            [siswaId, nama, kelompok, jk, desa, jam, tgl]
+            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal, foto)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+            [siswaId, nama, kelompok, jk, desa, jam, tgl, foto]
           )
           .then((r) => r.rows[0].id);
       },
@@ -80,7 +82,7 @@ async function init() {
     };
   }
 
-  // ------- SQLite (lokal) -------
+// ------- SQLite (lokal) -------
   const Database = require("better-sqlite3");
   const db = new Database(path.join(__dirname, "data", "absensi.db"));
   db.pragma("journal_mode = WAL");
@@ -99,9 +101,15 @@ async function init() {
       jenis_kelamin TEXT NOT NULL,
       desa          TEXT NOT NULL,
       jam_masuk     TEXT NOT NULL,
-      tanggal       TEXT NOT NULL
+      tanggal       TEXT NOT NULL,
+      foto          TEXT
     );
   `);
+  // Migrasi: tambahkan kolom foto jika tabel absensi lama belum memilikinya
+  const absenCols = db.prepare(`PRAGMA table_info(absensi)`).all().map((c) => c.name);
+  if (!absenCols.includes("foto")) {
+    db.exec(`ALTER TABLE absensi ADD COLUMN foto TEXT`);
+  }
   return {
     type: "sqlite",
     saveSiswa(id, nama, kelompok, jk) {
@@ -123,14 +131,14 @@ async function init() {
           .get(siswaId, tgl, jam)
       );
     },
-    insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl) {
+    insertAbsen(siswaId, nama, kelompok, jk, desa, jam, tgl, foto) {
       return Promise.resolve(
         db
           .prepare(
-            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal)
-             VALUES (?,?,?,?,?,?,?)`
+            `INSERT INTO absensi (siswa_id, nama, kelompok, jenis_kelamin, desa, jam_masuk, tanggal, foto)
+             VALUES (?,?,?,?,?,?,?,?)`
           )
-          .run(siswaId, nama, kelompok, jk, desa, jam, tgl).lastInsertRowid
+          .run(siswaId, nama, kelompok, jk, desa, jam, tgl, foto).lastInsertRowid
       );
     },
     listAbsensi(tgl) {
