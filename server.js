@@ -3,7 +3,7 @@ const cors = require("cors");
 const crypto = require("crypto");
 const path = require("path");
 const { init } = require("./db");
-const { DESA_KELOMPOK, normalisasi, desaValid, kelompokValid } = require("./desa");
+const { DESA_KELOMPOK, DESA_BEBAS, normalisasi, desaValid, desaBebas, kelompokValid } = require("./desa");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,14 +34,15 @@ app.post("/api/absen", async (req, res) => {
   if (!desaValid(desa)) {
     return res.status(400).json({ ok: false, pesan: `Desa tidak dikenal: ${desa}` });
   }
-  if (!kelompokValid(desa, kelompok)) {
+  // QR gabungan (PENGAJIAN MUMI DAERAH) menerima semua desa & kelompok
+  if (!desaBebas(desa) && !kelompokValid(desa, kelompok)) {
     return res.status(400).json({
       ok: false,
       pesan: `Kelompok "${kelompok}" tidak terdaftar di desa ${normalisasi(desa)}.`,
     });
   }
 
-  const desaFinal = normalisasi(desa);
+  const desaFinal = desaBebas(desa) ? DESA_BEBAS : normalisasi(desa);
 
   const siswaId = crypto
     .createHash("sha256")
@@ -87,8 +88,10 @@ app.get("/api/export", async (req, res) => {
   res.json({ ok: true, total: semua.length, data: semua });
 });
 
-// [GET] /api/desa  ->  daftar desa + kelompoknya
-app.get("/api/desa", (_req, res) => res.json({ ok: true, data: DESA_KELOMPOK }));
+// [GET] /api/desa  ->  daftar desa + kelompoknya (termasuk QR gabungan)
+app.get("/api/desa", (_req, res) =>
+  res.json({ ok: true, data: DESA_KELOMPOK, desa_bebas: DESA_BEBAS })
+);
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true, db: DB_TYPE }));
