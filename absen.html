@@ -184,6 +184,8 @@
     };
     const DESA_BEBAS = "PENGAJIAN MUMI DAERAH";
     const API = location.origin;
+    // Kunci akses API (harus sama dengan KUNCI_AKSES di server)
+    const KUNCI_AKSES = "mumi-bjn-2026";
 
     const $ = (id) => document.getElementById(id);
     let profil = null;
@@ -323,7 +325,7 @@
     }
 
     async function kirimFotoReferensi() {
-      const res = await fetch(API + "/api/siswa/foto", {
+      const res = await fetch(API + "/api/siswa/foto?kunci=" + KUNCI_AKSES, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -341,7 +343,7 @@
     async function bagikanLink() {
       if (!profil) return;
       try {
-        const res = await fetch(API + "/api/pantau/kode", {
+        const res = await fetch(API + "/api/pantau/kode?kunci=" + KUNCI_AKSES, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -494,7 +496,7 @@
     async function kirimAbsen(desa, fotoBase64) {
       tampilScan("Mengirim absen...", "info");
       try {
-        const res = await fetch(API + "/api/absen", {
+        const res = await fetch(API + "/api/absen?kunci=" + KUNCI_AKSES, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

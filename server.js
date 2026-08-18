@@ -9,6 +9,15 @@ const face = require("./face");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Kunci akses untuk API sensitif (ganti via env KUNCI_AKSES di Render bila perlu)
+const KUNCI_AKSES = process.env.KUNCI_AKSES || "mumi-bjn-2026";
+
+function cekKunci(req, res) {
+  if ((req.query.kunci || "") === KUNCI_AKSES) return true;
+  res.status(401).json({ ok: false, pesan: "Kunci akses salah atau tidak ada." });
+  return false;
+}
+
 app.use(cors());
 app.use(express.json({ limit: "8mb" }));
 
@@ -52,6 +61,7 @@ function telatDariJadwal(jadwalRows, desa, jamMasuk) {
 
 // [POST] /api/absen
 app.post("/api/absen", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, foto } = req.body;
 
   if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
@@ -119,6 +129,7 @@ app.post("/api/absen", async (req, res) => {
 
 // [POST] /api/siswa/foto  ->  simpan foto referensi wajah siswa
 app.post("/api/siswa/foto", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, foto } = req.body;
   if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
     return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });
@@ -237,6 +248,7 @@ app.get("/api/rekap-bulanan", async (req, res) => {
 
 // [POST] /api/absen-manual  ->  petugas mencatat absen tanpa foto
 app.post("/api/absen-manual", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, jam_manual } = req.body;
   if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
     return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });
@@ -280,6 +292,7 @@ app.post("/api/absen-manual", async (req, res) => {
 
 // [GET] /api/export?dari=YYYY-MM-DD&sampai=YYYY-MM-DD  -> untuk aplikasi desktop / Excel
 app.get("/api/export", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const { dari, sampai } = req.query;
   if (!dari || !sampai) return res.status(400).json({ ok: false, pesan: "Butuh ?dari= & sampai=" });
   const [semua, jadwal] = await Promise.all([db.listAbsensiRange(dari, sampai), db.getJadwalRange(dari, sampai)]);
@@ -289,6 +302,7 @@ app.get("/api/export", async (req, res) => {
 
 // [POST] /api/jadwal  ->  atur jam mulai per desa per hari (jam_mulai kosong = hapus jadwal)
 app.post("/api/jadwal", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const { tanggal, desa, jam_mulai } = req.body;
   if (!tanggal || !desa) return res.status(400).json({ ok: false, pesan: "Butuh tanggal & desa." });
   if (!desaValid(desa)) return res.status(400).json({ ok: false, pesan: `Desa tidak dikenal: ${desa}` });
@@ -320,6 +334,7 @@ app.get("/api/pengaturan", (_req, res) => {
 
 // [POST] /api/pengaturan  ->  ubah toleransi telat (0-120 menit)
 app.post("/api/pengaturan", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const t = parseInt(req.body.toleransi_telat, 10);
   if (isNaN(t) || t < 0 || t > 120) {
     return res.status(400).json({ ok: false, pesan: "Toleransi harus 0-120 menit." });
@@ -339,11 +354,12 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, db: DB_TYPE }));
 
 // Info versi (untuk verifikasi build mana yang sedang live)
 app.get("/api/versi", (_req, res) =>
-  res.json({ ok: true, versi: "f15fa2b-tol40", fitur: ["face-match", "rekap", "rekap-bulanan", "absen-manual"] })
+  res.json({ ok: true, versi: "kunci-akses-v1", fitur: ["face-match", "rekap", "rekap-bulanan", "absen-manual", "kunci-akses"] })
 );
 
 // [POST] /api/pantau/kode  ->  buat/ambil kode pantau untuk siswa
 app.post("/api/pantau/kode", async (req, res) => {
+  if (!cekKunci(req, res)) return;
   const { kode_sekolah, nama, kelompok, jenis_kelamin, desa } = req.body;
   if (!kode_sekolah || kode_sekolah !== process.env.KODE_SEKOLAH) {
     return res.status(403).json({ ok: false, pesan: "Kode sekolah salah." });

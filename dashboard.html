@@ -94,12 +94,20 @@
         btn.textContent = "Simpan";
         btn.style.cssText = "padding:6px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;";
         btn.onclick = async () => {
-          const res = await fetch("/api/jadwal", {
+          let kunci = localStorage.getItem("kunci_akses");
+          if (!kunci) kunci = prompt("Masukkan kunci akses admin:") || "";
+          localStorage.setItem("kunci_akses", kunci);
+          const res = await fetch("/api/jadwal?kunci=" + encodeURIComponent(kunci), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ tanggal: tanggalInput.value, desa: d, jam_mulai: inp.value }),
           });
           const j = await res.json();
+          if (res.status === 401) {
+            localStorage.removeItem("kunci_akses");
+            alert("Kunci akses salah.");
+            return;
+          }
           alert(j.pesan || "Gagal menyimpan.");
           load();
         };
