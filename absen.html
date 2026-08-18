@@ -68,6 +68,16 @@
     <!-- ===== PANEL PROFIL ===== -->
     <div id="panel-profil" class="panel active">
       <div class="card">
+        <div style="text-align:center;margin-bottom:8px;">
+          <div id="foto-lingkaran" style="width:120px;height:120px;border-radius:60px;overflow:hidden;margin:0 auto;background:#e2e8f0;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid #cbd5e1;">
+            <img id="foto-preview" style="width:100%;height:100%;object-fit:cover;display:none;" alt="Foto diri" />
+            <span id="foto-placeholder" style="font-size:56px;">👤</span>
+          </div>
+          <div class="hint" id="foto-hint" style="text-align:center;margin-top:6px;">Ambil Foto Diri (Kamera Depan)</div>
+        </div>
+        <input type="file" id="foto-input" accept="image/*" capture="user" style="display:none;" />
+        <canvas id="foto-canvas" style="display:none;"></canvas>
+
         <label>Nama Lengkap</label>
         <input id="nama" placeholder="Nama siswa" autocomplete="off" />
 
@@ -97,6 +107,7 @@
           </div>
           <button class="icon-btn" onclick="ubahProfil()">Ubah</button>
         </div>
+        <button class="btn btn-outline" id="btn-bagikan" onclick="bagikanLink()" style="display:none;">📤 Bagikan Link ke Orang Tua</button>
       </div>
     </div>
 
@@ -150,6 +161,7 @@
       <div class="dlg-icon" id="hasil-icon"></div>
       <div class="dlg-title" id="hasil-title"></div>
       <div class="dlg-text" id="hasil-text"></div>
+      <div id="hasil-wajah" style="display:none;margin-top:10px;padding:10px;border-radius:10px;font-size:13px;font-weight:600;"></div>
       <button class="btn btn-primary" onclick="tutupHasil()">OK</button>
     </div>
   </div>
@@ -169,6 +181,7 @@
     const $ = (id) => document.getElementById(id);
     let profil = null;
     let editDibuka = false;
+    let profilDraftFoto = "";
 
     // ---------- NAV ----------
     function showTab(n) {
@@ -212,17 +225,30 @@
       if (!nama) return tampilErr("Nama wajib diisi.");
       if (kelompok === "Semua Kelompok") return tampilErr("Untuk QR PENGAJIAN, kelompok tidak perlu dipilih di profil. Pilih kelompok dari desa asalmu.");
       if (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) return tampilErr("PIN harus 4-6 angka.");
-      profil = { nama, desa, kelompok, jk, pin };
+      if (!profilDraftFoto) return tampilErr("Ambil foto diri dulu (kamera depan).");
+      profil = { nama, desa, kelompok, jk, pin, foto: profilDraftFoto };
       localStorage.setItem("profil", JSON.stringify(profil));
+      editDibuka = false;
       tampilkanProfilTersimpan();
-      tampilOK("Profil tersimpan. Buka tab Scan QR untuk absen.");
+      tampilOK("Profil tersimpan. Mengirim foto referensi...");
+      kirimFotoReferensi().then((res) => {
+        tampilOK(
+          res.ok === true
+            ? "Profil tersimpan + foto referensi terkirim."
+            : "Profil tersimpan, tapi foto referensi gagal: " + (res.pesan || "")
+        );
+      }).catch((e) => {
+        tampilOK("Profil tersimpan, tapi foto referensi gagal: " + e.message);
+      });
     }
 
     function tampilkanProfilTersimpan() {
       $("saved-box").style.display = profil ? "flex" : "none";
+      $("btn-bagikan").style.display = profil ? "block" : "none";
       if (profil) {
         $("sb-nama").textContent = profil.nama;
         $("sb-meta").textContent = profil.desa + " · " + profil.kelompok + " · " + profil.jk;
+        tampilkanFotoPreview(profil.foto || "");
       }
     }
 
@@ -240,14 +266,16 @@
         return;
       }
       tutupPin();
-      editDibuka = false;
       $("nama").value = profil.nama;
       $("desa").value = profil.desa;
       isiKelompok();
       $("kelompok").value = profil.kelompok;
       $("jk").value = profil.jk;
       $("pin").value = profil.pin;
+      profilDraftFoto = profil.foto || "";
+      tampilkanFotoPreview(profilDraftFoto);
       $("saved-box").style.display = "none";
+      $("btn-bagikan").style.display = "none";
       tampilOK("Profil dibuka. Ubah lalu tekan Simpan Profil.");
     }
 
@@ -255,6 +283,87 @@
 
     function tampilErr(m) { const e = $("profil-err"); e.textContent = m; e.style.display = "block"; setTimeout(() => (e.style.display = "none"), 3000); }
     function tampilOK(m) { const s = $("profil-saved"); s.textContent = m; s.style.display = "block"; setTimeout(() => (s.style.display = "none"), 3000); }
+
+    // ---------- FOTO DIRI (PROFIL) ----------
+    $("foto-lingkaran").addEventListener("click", () => {
+      if (!profil || editDibuka) $("foto-input").click();
+    });
+
+    $("foto-input").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        profilDraftFoto = await kompresFoto(file, "foto-canvas");
+        tampilkanFotoPreview(profilDraftFoto);
+      } catch (e) {
+        tampilErr("Gagal membaca foto: " + e.message);
+      }
+    });
+
+    function tampilkanFotoPreview(base64) {
+      if (base64) {
+        $("foto-preview").src = "data:image/jpeg;base64," + base64;
+        $("foto-preview").style.display = "block";
+        $("foto-placeholder").style.display = "none";
+        $("foto-hint").textContent = "Foto Diri ✓";
+        $("foto-hint").style.color = "#166534";
+      } else {
+        $("foto-preview").style.display = "none";
+        $("foto-placeholder").style.display = "block";
+        $("foto-hint").textContent = "Ambil Foto Diri (Kamera Depan)";
+        $("foto-hint").style.color = "#94a3b8";
+      }
+    }
+
+    async function kirimFotoReferensi() {
+      const res = await fetch(API + "/api/siswa/foto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nama: profil.nama,
+          desa: profil.desa,
+          kelompok: profil.kelompok,
+          jenis_kelamin: profil.jk,
+          kode_sekolah: "SMAN1",
+          foto: profilDraftFoto,
+        }),
+      });
+      return res.json();
+    }
+
+    async function bagikanLink() {
+      if (!profil) return;
+      try {
+        const res = await fetch(API + "/api/pantau/kode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nama: profil.nama,
+            desa: profil.desa,
+            kelompok: profil.kelompok,
+            jenis_kelamin: profil.jk,
+            kode_sekolah: "SMAN1",
+          }),
+        });
+        const j = await res.json();
+        if (j.ok !== true) { tampilErr("Gagal membuat link: " + (j.pesan || "")); return; }
+        const link = location.origin + j.link;
+        const teks = "Bismillah, Bapak/Ibu, ini link untuk memantau kehadiran " + profil.nama +
+          " (" + profil.kelompok + " - " + profil.desa + ") di Pengajian MUMI Bojonegoro Timur.\n\n" +
+          "Buka link ini kapan saja untuk melihat status kehadiran hari ini:\n" + link;
+        if (navigator.share) {
+          try { await navigator.share({ title: "Pantau Kehadiran " + profil.nama, text: teks }); return; } catch (e) {}
+        }
+        try {
+          await navigator.clipboard.writeText(teks);
+          tampilOK("Link disalin ke clipboard. Tempel di WhatsApp.");
+        } catch (e) {
+          prompt("Salin link ini:", teks);
+        }
+      } catch (e) {
+        tampilErr("Gagal membuat link: " + e.message);
+      }
+    }
 
     // ---------- SCAN QR ----------
     let stream = null;
@@ -298,7 +407,7 @@
             const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const kode = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
             if (kode && kode.data) {
-              onQr(kode.data.trim().toUpperCase());
+              onQr(kode.data.trim());
             }
           } catch (e) {}
         }
@@ -318,8 +427,20 @@
       }
     }
 
-    async function onQr(desa) {
+    function ekstrakDesa(raw) {
+      if (/^https?:\/\//i.test(raw)) {
+        try {
+          const u = new URL(raw);
+          const d = (u.searchParams.get("desa") || "").trim().toUpperCase();
+          if (d) return d;
+        } catch (e) {}
+      }
+      return raw.trim().toUpperCase();
+    }
+
+    async function onQr(raw) {
       if (memproses) return;
+      const desa = ekstrakDesa(raw);
       const dikenal = DESA_KELOMPOK[desa] || desa === DESA_BEBAS;
       if (!dikenal) { tampilScan('QR tidak dikenal: "' + desa + '"', "err"); return; }
       memproses = true;
@@ -336,7 +457,7 @@
       const file = ev.target.files[0];
       if (!file) { tutupSelfie(true); return; }
       try {
-        const fotoBase64 = await kompresFoto(file);
+        const fotoBase64 = await kompresFoto(file, "selfie-canvas");
         const desa = $("scan-desa").value;
         await kirimAbsen(desa, fotoBase64);
       } catch (e) {
@@ -345,7 +466,7 @@
       }
     });
 
-    function kompresFoto(file) {
+    function kompresFoto(file, canvasId) {
       return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
@@ -353,7 +474,7 @@
           let w = img.width, h = img.height;
           const s = Math.max(w, h);
           if (s > max) { const r = max / s; w = Math.round(w * r); h = Math.round(h * r); }
-          const c = $("selfie-canvas");
+          const c = $(canvasId);
           c.width = w; c.height = h;
           c.getContext("2d").drawImage(img, 0, 0, w, h);
           resolve(c.toDataURL("image/jpeg", 0.6).split(",")[1]);
@@ -382,6 +503,16 @@
         tutupSelfie(true);
         if (j.ok) {
           tampilDialog("✅", "Absen Berhasil", j.pesan);
+          const w = $("hasil-wajah");
+          if (j.cocok_wajah === "COCOK") {
+            w.style.display = "block"; w.style.background = "#dcfce7"; w.style.color = "#166534";
+            w.textContent = "✓ Wajah sesuai foto profil";
+          } else if (j.cocok_wajah === "TIDAK COCOK") {
+            w.style.display = "block"; w.style.background = "#fee2e2"; w.style.color = "#991b1b";
+            w.textContent = "⚠ Wajah TIDAK sesuai foto profil!";
+          } else {
+            w.style.display = "none";
+          }
         } else {
           tampilDialog("❌", "Gagal", j.pesan || "Terjadi kesalahan.");
         }
@@ -411,6 +542,7 @@
     }
     function tutupHasil() {
       $("hasil-dlg").classList.remove("show");
+      $("hasil-wajah").style.display = "none";
       memproses = false;
       if (document.getElementById("panel-scan").classList.contains("active")) mulaiScan();
     }
@@ -425,6 +557,15 @@
     isiDropdownDesa();
     isiKelompok();
     $("desa").addEventListener("change", isiKelompok);
+
+    const paramDesa = new URLSearchParams(location.search).get("desa");
+    if (paramDesa) {
+      const d = paramDesa.trim().toUpperCase();
+      if (DESA_KELOMPOK[d] || d === DESA_BEBAS) {
+        $("desa").value = d;
+        isiKelompok();
+      }
+    }
 
     const saved = localStorage.getItem("profil");
     if (saved) {
