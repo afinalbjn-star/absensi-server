@@ -41,6 +41,12 @@ async function init() {
         siswa_id  TEXT NOT NULL UNIQUE,
         nama      TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS jadwal (
+        tanggal   TEXT NOT NULL,
+        desa      TEXT NOT NULL,
+        jam_mulai TEXT NOT NULL,
+        PRIMARY KEY (tanggal, desa)
+      );
     `);
     return {
       type: "postgres",
@@ -126,6 +132,26 @@ async function init() {
           .query(`SELECT * FROM absensi WHERE siswa_id=$1 AND tanggal=$2 ORDER BY id DESC LIMIT 1`, [siswaId, tgl])
           .then((r) => r.rows[0] || null);
       },
+      setJadwal(tanggal, desa, jamMulai) {
+        return pool.query(
+          `INSERT INTO jadwal (tanggal, desa, jam_mulai) VALUES ($1,$2,$3)
+           ON CONFLICT (tanggal, desa) DO UPDATE SET jam_mulai=$3`,
+          [tanggal, desa, jamMulai]
+        );
+      },
+      hapusJadwal(tanggal, desa) {
+        return pool.query(`DELETE FROM jadwal WHERE tanggal=$1 AND desa=$2`, [tanggal, desa]);
+      },
+      getJadwal(tgl) {
+        return pool
+          .query(`SELECT desa, jam_mulai FROM jadwal WHERE tanggal=$1`, [tgl])
+          .then((r) => r.rows);
+      },
+      getJadwalRange(dari, sampai) {
+        return pool
+          .query(`SELECT tanggal, desa, jam_mulai FROM jadwal WHERE tanggal BETWEEN $1 AND $2`, [dari, sampai])
+          .then((r) => r.rows);
+      },
     };
   }
 
@@ -175,6 +201,12 @@ async function init() {
       kode      TEXT PRIMARY KEY,
       siswa_id  TEXT NOT NULL UNIQUE,
       nama      TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS jadwal (
+      tanggal   TEXT NOT NULL,
+      desa      TEXT NOT NULL,
+      jam_mulai TEXT NOT NULL,
+      PRIMARY KEY (tanggal, desa)
     );
   `);
   return {
@@ -253,6 +285,29 @@ async function init() {
     absenTerakhirSiswa(siswaId, tgl) {
       return Promise.resolve(
         db.prepare(`SELECT * FROM absensi WHERE siswa_id=? AND tanggal=? ORDER BY id DESC LIMIT 1`).get(siswaId, tgl) || null
+      );
+    },
+    setJadwal(tanggal, desa, jamMulai) {
+      return Promise.resolve(
+        db
+          .prepare(
+            `INSERT INTO jadwal (tanggal, desa, jam_mulai) VALUES (?,?,?)
+             ON CONFLICT(tanggal, desa) DO UPDATE SET jam_mulai=excluded.jam_mulai`
+          )
+          .run(tanggal, desa, jamMulai)
+      );
+    },
+    hapusJadwal(tanggal, desa) {
+      return Promise.resolve(
+        db.prepare(`DELETE FROM jadwal WHERE tanggal=? AND desa=?`).run(tanggal, desa)
+      );
+    },
+    getJadwal(tgl) {
+      return Promise.resolve(db.prepare(`SELECT desa, jam_mulai FROM jadwal WHERE tanggal=?`).all(tgl));
+    },
+    getJadwalRange(dari, sampai) {
+      return Promise.resolve(
+        db.prepare(`SELECT tanggal, desa, jam_mulai FROM jadwal WHERE tanggal BETWEEN ? AND ?`).all(dari, sampai)
       );
     },
   };

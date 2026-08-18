@@ -162,6 +162,13 @@
       <div class="dlg-title" id="hasil-title"></div>
       <div class="dlg-text" id="hasil-text"></div>
       <div id="hasil-wajah" style="display:none;margin-top:10px;padding:10px;border-radius:10px;font-size:13px;font-weight:600;"></div>
+      <div id="hasil-telat" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:#fee2e2;border:1.5px solid #fca5a5;">
+        <div style="font-size:16px;font-weight:800;color:#991b1b;">⚠️ ANDA TELAT</div>
+        <div style="font-size:13px;color:#7f1d1d;margin-top:6px;line-height:1.5;">
+          Amal sholih kafaroh (tanya petugas kafarohnya apa) dan lain kali jangan sampai telat lagi.<br />
+          <b>Alhamdulillahi jazakallahu/jazakillahu khoiro</b>
+        </div>
+      </div>
       <button class="btn btn-primary" onclick="tutupHasil()">OK</button>
     </div>
   </div>
@@ -513,6 +520,7 @@
           } else {
             w.style.display = "none";
           }
+          $("hasil-telat").style.display = j.telat ? "block" : "none";
         } else {
           tampilDialog("❌", "Gagal", j.pesan || "Terjadi kesalahan.");
         }
@@ -543,6 +551,7 @@
     function tutupHasil() {
       $("hasil-dlg").classList.remove("show");
       $("hasil-wajah").style.display = "none";
+      $("hasil-telat").style.display = "none";
       memproses = false;
       if (document.getElementById("panel-scan").classList.contains("active")) mulaiScan();
     }

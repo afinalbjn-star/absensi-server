@@ -34,6 +34,21 @@ function nowID() {
   return { tgl: fmtTgl.format(d), jam: fmtJam.format(d) };
 }
 
+// Toleransi telat dalam menit (bisa diubah lewat env TOLERANSI_TELAT)
+const TOLERANSI_TELAT = parseInt(process.env.TOLERANSI_TELAT || "15", 10);
+
+function menitDariJam(jam) {
+  // "16.05.30" -> 965 ; "16:00" -> 960
+  const p = String(jam).split(".").map((x) => parseInt(x, 10));
+  return (p[0] || 0) * 60 + (p[1] || 0);
+}
+
+function telatDariJadwal(jadwalRows, desa, jamMasuk) {
+  const j = (jadwalRows || []).find((r) => r.desa === desa);
+  if (!j || !j.jam_mulai) return false;
+  return menitDariJam(jamMasuk) > menitDariJam(j.jam_mulai) + TOLERANSI_TELAT;
+}
+
 // [POST] /api/absen
 app.post("/api/absen", async (req, res) => {
   const { nama, kelompok, jenis_kelamin, desa, kode_sekolah, foto } = req.body;
@@ -87,6 +102,8 @@ app.post("/api/absen", async (req, res) => {
   }
 
   const id = await db.insertAbsen(siswaId, nama, kelompok, jenis_kelamin, desaFinal, jam, tgl, foto || null, cocokWajah);
+  const jadwal = await db.getJadwal(tgl);
+  const telat = telatDariJadwal(jadwal, desaFinal, jam);
   const pesan = cocokWajah === "TIDAK COCOK"
     ? `Absen tercatat, tapi WAJAH TIDAK COCOK dengan foto profil.`
     : `Absen berhasil. Selamat datang, ${nama}!`;
@@ -94,6 +111,7 @@ app.post("/api/absen", async (req, res) => {
     ok: true,
     pesan,
     cocok_wajah: cocokWajah,
+    telat,
     data: { id, jam_masuk: jam, tanggal: tgl },
   });
 });
@@ -130,21 +148,24 @@ app.post("/api/siswa/foto", async (req, res) => {
 // [GET] /api/absensi?tanggal=YYYY-MM-DD
 app.get("/api/absensi", async (req, res) => {
   const tanggal = req.query.tanggal || nowID().tgl;
-  const rows = await db.listAbsensi(tanggal);
+  const [rows, jadwal] = await Promise.all([db.listAbsensi(tanggal), db.getJadwal(tanggal)]);
+  rows.forEach((r) => (r.telat = telatDariJadwal(jadwal, r.desa, r.jam_masuk)));
   res.json({ ok: true, jumlah: rows.length, data: rows });
 });
 
 // [GET] /api/statistik?tanggal=YYYY-MM-DD
 app.get("/api/statistik", async (req, res) => {
   const tanggal = req.query.tanggal || nowID().tgl;
-  const s = await db.statistik(tanggal);
-  res.json({ ok: true, tanggal, total: s.total, per_kelompok: s.perKelompok });
+  const [s, rows, jadwal] = await Promise.all([db.statistik(tanggal), db.listAbsensi(tanggal), db.getJadwal(tanggal)]);
+  const totalTelat = rows.filter((r) => telatDariJadwal(jadwal, r.desa, r.jam_masuk)).length;
+  res.json({ ok: true, tanggal, total: s.total, total_telat: totalTelat, per_kelompok: s.perKelompok });
 });
 
 // [GET] /api/rekap?tanggal=YYYY-MM-DD  ->  rekap harian per desa
 app.get("/api/rekap", async (req, res) => {
   const tanggal = req.query.tanggal || nowID().tgl;
-  const rows = await db.listAbsensi(tanggal);
+  const [rows, jadwal] = await Promise.all([db.listAbsensi(tanggal), db.getJadwal(tanggal)]);
+  rows.forEach((r) => (r.telat = telatDariJadwal(jadwal, r.desa, r.jam_masuk)));
   const perDesa = {};
   for (const r of rows) {
     if (!perDesa[r.desa]) perDesa[r.desa] = [];
@@ -155,6 +176,7 @@ app.get("/api/rekap", async (req, res) => {
     .map((desa) => ({
       desa,
       total: perDesa[desa].length,
+      telat: perDesa[desa].filter((r) => r.telat).length,
       per_kelompok: Object.values(
         perDesa[desa].reduce((acc, r) => {
           acc[r.kelompok] = (acc[r.kelompok] || 0) + 1;
@@ -172,6 +194,7 @@ app.get("/api/rekap", async (req, res) => {
         jam_masuk: r.jam_masuk,
         foto: r.foto || null,
         cocok_wajah: r.cocok_wajah || null,
+        telat: r.telat,
       })),
     }));
   res.json({ ok: true, tanggal, total: rows.length, data });
@@ -255,8 +278,35 @@ app.post("/api/absen-manual", async (req, res) => {
 app.get("/api/export", async (req, res) => {
   const { dari, sampai } = req.query;
   if (!dari || !sampai) return res.status(400).json({ ok: false, pesan: "Butuh ?dari= & sampai=" });
-  const semua = await db.listAbsensiRange(dari, sampai);
+  const [semua, jadwal] = await Promise.all([db.listAbsensiRange(dari, sampai), db.getJadwalRange(dari, sampai)]);
+  semua.forEach((r) => (r.telat = telatDariJadwal(jadwal, r.desa, r.jam_masuk)));
   res.json({ ok: true, total: semua.length, data: semua });
+});
+
+// [POST] /api/jadwal  ->  atur jam mulai per desa per hari (jam_mulai kosong = hapus jadwal)
+app.post("/api/jadwal", async (req, res) => {
+  const { tanggal, desa, jam_mulai } = req.body;
+  if (!tanggal || !desa) return res.status(400).json({ ok: false, pesan: "Butuh tanggal & desa." });
+  if (!desaValid(desa)) return res.status(400).json({ ok: false, pesan: `Desa tidak dikenal: ${desa}` });
+  const jam = (jam_mulai || "").trim();
+  if (!jam) {
+    await db.hapusJadwal(tanggal, desa);
+    return res.json({ ok: true, pesan: `Jadwal ${desa} ${tanggal} dihapus.` });
+  }
+  if (!/^\d{1,2}[:.]\d{2}/.test(jam)) {
+    return res.status(400).json({ ok: false, pesan: "Format jam salah (contoh: 16:00)." });
+  }
+  const [jh, jm] = jam.split(/[:.]/).map((x) => parseInt(x, 10));
+  const j = String(jh).padStart(2, "0") + "." + String(jm).padStart(2, "0") + ".00";
+  await db.setJadwal(tanggal, desa, j);
+  res.json({ ok: true, pesan: `Jam mulai ${desa} disimpan: ${jam}.` });
+});
+
+// [GET] /api/jadwal?tanggal=YYYY-MM-DD  ->  daftar jam mulai hari itu
+app.get("/api/jadwal", async (req, res) => {
+  const tanggal = req.query.tanggal || nowID().tgl;
+  const rows = await db.getJadwal(tanggal);
+  res.json({ ok: true, tanggal, data: rows });
 });
 
 // [GET] /api/desa  ->  daftar desa + kelompoknya (termasuk QR gabungan)
