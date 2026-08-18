@@ -47,6 +47,10 @@ async function init() {
         jam_mulai TEXT NOT NULL,
         PRIMARY KEY (tanggal, desa)
       );
+      CREATE TABLE IF NOT EXISTS pengaturan (
+        kunci TEXT PRIMARY KEY,
+        nilai TEXT NOT NULL
+      );
     `);
     return {
       type: "postgres",
@@ -152,6 +156,18 @@ async function init() {
           .query(`SELECT tanggal, desa, jam_mulai FROM jadwal WHERE tanggal BETWEEN $1 AND $2`, [dari, sampai])
           .then((r) => r.rows);
       },
+      getPengaturan(kunci) {
+        return pool
+          .query(`SELECT nilai FROM pengaturan WHERE kunci=$1`, [kunci])
+          .then((r) => (r.rows[0] ? r.rows[0].nilai : null));
+      },
+      setPengaturan(kunci, nilai) {
+        return pool.query(
+          `INSERT INTO pengaturan (kunci, nilai) VALUES ($1,$2)
+           ON CONFLICT (kunci) DO UPDATE SET nilai=$2`,
+          [kunci, nilai]
+        );
+      },
     };
   }
 
@@ -207,6 +223,10 @@ async function init() {
       desa      TEXT NOT NULL,
       jam_mulai TEXT NOT NULL,
       PRIMARY KEY (tanggal, desa)
+    );
+    CREATE TABLE IF NOT EXISTS pengaturan (
+      kunci TEXT PRIMARY KEY,
+      nilai TEXT NOT NULL
     );
   `);
   return {
@@ -308,6 +328,20 @@ async function init() {
     getJadwalRange(dari, sampai) {
       return Promise.resolve(
         db.prepare(`SELECT tanggal, desa, jam_mulai FROM jadwal WHERE tanggal BETWEEN ? AND ?`).all(dari, sampai)
+      );
+    },
+    getPengaturan(kunci) {
+      const r = db.prepare(`SELECT nilai FROM pengaturan WHERE kunci=?`).get(kunci);
+      return Promise.resolve(r ? r.nilai : null);
+    },
+    setPengaturan(kunci, nilai) {
+      return Promise.resolve(
+        db
+          .prepare(
+            `INSERT INTO pengaturan (kunci, nilai) VALUES (?,?)
+             ON CONFLICT(kunci) DO UPDATE SET nilai=excluded.nilai`
+          )
+          .run(kunci, nilai)
       );
     },
   };

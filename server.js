@@ -34,8 +34,9 @@ function nowID() {
   return { tgl: fmtTgl.format(d), jam: fmtJam.format(d) };
 }
 
-// Toleransi telat dalam menit (bisa diubah lewat env TOLERANSI_TELAT)
-const TOLERANSI_TELAT = parseInt(process.env.TOLERANSI_TELAT || "15", 10);
+// Toleransi telat dalam menit (default 15, bisa diubah lewat env TOLERANSI_TELAT
+// atau lewat API /api/pengaturan)
+let toleransiTelat = parseInt(process.env.TOLERANSI_TELAT || "15", 10);
 
 function menitDariJam(jam) {
   // "16.05.30" -> 965 ; "16:00" -> 960
@@ -46,7 +47,7 @@ function menitDariJam(jam) {
 function telatDariJadwal(jadwalRows, desa, jamMasuk) {
   const j = (jadwalRows || []).find((r) => r.desa === desa);
   if (!j || !j.jam_mulai) return false;
-  return menitDariJam(jamMasuk) > menitDariJam(j.jam_mulai) + TOLERANSI_TELAT;
+  return menitDariJam(jamMasuk) > menitDariJam(j.jam_mulai) + toleransiTelat;
 }
 
 // [POST] /api/absen
@@ -312,6 +313,22 @@ app.get("/api/jadwal", async (req, res) => {
   res.json({ ok: true, tanggal, data: rows });
 });
 
+// [GET] /api/pengaturan  ->  pengaturan server (toleransi telat)
+app.get("/api/pengaturan", (_req, res) => {
+  res.json({ ok: true, toleransi_telat: toleransiTelat });
+});
+
+// [POST] /api/pengaturan  ->  ubah toleransi telat (0-120 menit)
+app.post("/api/pengaturan", async (req, res) => {
+  const t = parseInt(req.body.toleransi_telat, 10);
+  if (isNaN(t) || t < 0 || t > 120) {
+    return res.status(400).json({ ok: false, pesan: "Toleransi harus 0-120 menit." });
+  }
+  await db.setPengaturan("toleransi_telat", String(t));
+  toleransiTelat = t;
+  res.json({ ok: true, pesan: `Toleransi telat diubah menjadi ${t} menit.` });
+});
+
 // [GET] /api/desa  ->  daftar desa + kelompoknya (termasuk QR gabungan)
 app.get("/api/desa", (_req, res) =>
   res.json({ ok: true, data: DESA_KELOMPOK, desa_bebas: DESA_BEBAS })
@@ -383,9 +400,13 @@ app.get("/jsqr.js", (_req, res) => res.sendFile(path.join(__dirname, "jsqr.js"))
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
 
 init()
-  .then((instance) => {
+  .then(async (instance) => {
     db = instance;
     DB_TYPE = instance.type;
+    const tersimpan = await db.getPengaturan("toleransi_telat");
+    if (tersimpan !== null) {
+      toleransiTelat = parseInt(tersimpan, 10) || toleransiTelat;
+    }
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server absensi berjalan (db: ${DB_TYPE})`);
       console.log(`Buka dashboard: http://localhost:${PORT}`);
