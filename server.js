@@ -208,6 +208,7 @@ app.get("/api/rekap-bulanan", async (req, res) => {
   const dari = `${bulan}-01`;
   const sampai = `${bulan}-${String(akhir).padStart(2, "0")}`;
   const rows = await db.listAbsensiRange(dari, sampai);
+  const jadwal = await db.getJadwalRange(dari, sampai);
   const perSiswa = {};
   for (const r of rows) {
     const k = `${r.nama}|${r.kelompok}|${r.desa}`;
@@ -219,14 +220,16 @@ app.get("/api/rekap-bulanan", async (req, res) => {
         hariHadir: [],
         catatan: 0,
         cocokWajah: r.cocok_wajah === "TIDAK COCOK" ? 1 : 0,
+        hariTelat: new Set(),
       };
     }
     perSiswa[k].hariHadir.push(r.tanggal);
     perSiswa[k].catatan++;
     if (r.cocok_wajah === "TIDAK COCOK") perSiswa[k].cocokWajah++;
+    if (telatDariJadwal(jadwal, r.desa, r.jam_masuk)) perSiswa[k].hariTelat.add(r.tanggal);
   }
   const data = Object.values(perSiswa)
-    .map((s) => ({ ...s, hariHadir: [...new Set(s.hariHadir)].sort() }))
+    .map((s) => ({ ...s, hariHadir: [...new Set(s.hariHadir)].sort(), hariTelat: [...s.hariTelat].sort() }))
     .sort((a, b) => a.nama.localeCompare(b.nama));
   res.json({ ok: true, bulan, total_siswa: data.length, data });
 });
