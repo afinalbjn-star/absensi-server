@@ -62,6 +62,37 @@ function decodeToTensor(base64) {
   return t;
 }
 
+/// Potong area wajah (dengan margin) dari tensor, kembalikan { crop, boxWajah }
+/// boxWajah = box yang sudah diterjemahkan ke koordinat hasil potongan.
+function potongKeWajah(t, box) {
+  const [h, w] = t.shape;
+  const x1 = Math.max(0, Math.floor(box.x));
+  const y1 = Math.max(0, Math.floor(box.y));
+  const x2 = Math.min(w, Math.ceil(box.x + box.width));
+  const y2 = Math.min(h, Math.ceil(box.y + box.height));
+  const m = Math.round(Math.max(x2 - x1, y2 - y1) * 0.3); // margin 30%
+  const cx1 = Math.max(0, x1 - m);
+  const cy1 = Math.max(0, y1 - m);
+  const cx2 = Math.min(w, x2 + m);
+  const cy2 = Math.min(h, y2 + m);
+  let crop = t.slice([cy1, cx1, 0], [cy2 - cy1, cx2 - cx1, 3]);
+  // Perbesar hasil potongan ke ~400px agar wajah besar (simulasi selfie)
+  const skala = 400 / Math.max(cy2 - cy1, cx2 - cx1);
+  if (skala < 1) {
+    const nw = Math.max(1, Math.round((cx2 - cx1) * skala));
+    const nh = Math.max(1, Math.round((cy2 - cy1) * skala));
+    const resized = faceapi.tf.image.resizeBilinear(crop, [nh, nw]);
+    crop.dispose();
+    crop = resized;
+  }
+  const fx = box.x - cx1;
+  const fy = box.y - cy1;
+  return {
+    crop,
+    boxWajah: new faceapi.Box({ x: fx, y: fy, width: box.width, height: box.height }, { width: crop.shape[1], height: crop.shape[0] }),
+  };
+}
+
 /// Ambil deskriptor wajah (Array 128 angka) dari base64 foto JPEG. null jika tak ada wajah.
 async function deskriptorFoto(base64) {
   if (!base64) return null;
@@ -79,9 +110,13 @@ async function deskriptorFoto(base64) {
         boxes = await _net.locateFaces(t, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }));
       }
       if (!boxes.length) return null;
-      const d = await _rec.computeFaceDescriptor(t, boxes[0]);
+      // Potong area wajah + margin lalu perbesar ke ~400px (seperti selfie)
+      // agar deskriptor lebih andal untuk membedakan orang.
+      const { crop, boxWajah } = potongKeWajah(t, boxes[0].box);
+      const d = await _rec.computeFaceDescriptor(crop, boxWajah);
       const out = Array.from(d);
       if (d.dispose) d.dispose();
+      crop.dispose();
       return out;
     } finally {
       engine.endScope();

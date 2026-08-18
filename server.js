@@ -75,7 +75,7 @@ app.post("/api/absen", async (req, res) => {
     if (ref && ref.desk_ref) {
       const d = await face.deskriptorFoto(foto);
       const j = face.dist(d, JSON.parse(ref.desk_ref));
-      const toleransi = parseFloat(process.env.WAJAH_TOLERANSI || "0.5");
+      const toleransi = parseFloat(process.env.WAJAH_TOLERANSI || "0.40");
       cocokWajah = d && j <= toleransi ? "COCOK" : "TIDAK COCOK";
     }
   }
@@ -269,7 +269,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, db: DB_TYPE }));
 
 // Info versi (untuk verifikasi build mana yang sedang live)
 app.get("/api/versi", (_req, res) =>
-  res.json({ ok: true, versi: "2c8628a-tiny", fitur: ["face-match", "rekap", "rekap-bulanan", "absen-manual"] })
+  res.json({ ok: true, versi: "f15fa2b-tol40", fitur: ["face-match", "rekap", "rekap-bulanan", "absen-manual"] })
 );
 
 // [POST] /api/pantau/kode  ->  buat/ambil kode pantau untuk siswa
